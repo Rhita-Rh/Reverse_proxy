@@ -5,5 +5,8 @@
 3/ simple reverse proxy Done!
 4/ add multiple servers and check if it works
 5/ implement round-Robin and least connections
-6/error handling
-7/test timeouts
+6/ concurrency handling
+7/ healthChecker
+8/ admin API
+9/error handling
+10/test timeouts
