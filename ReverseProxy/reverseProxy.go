@@ -4,28 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand/v2"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 )
 
-type Backend struct{
-	URL *url.URL `json:"-"`
-	URLString string `json:"url"`
-	Alive bool `json:"alive"`
-	CurrentConns int64 `json:"current_connections"`
-	mux sync.RWMutex
-}
-
-type ServerPool struct{
-	Backends[ ]*Backend `json:"backends"`
-	Current uint64 `json: "current"`
-}
 
 // to get the ReverseProxy configuration
 type ProxyConfig struct {
@@ -37,33 +23,29 @@ type ReverseProxy struct{
 	Port int
 	Strategy string 
 	HealthCheckFreq time.Duration 
-	handler *httputil.ReverseProxy
+	ServerPool *ServerPool
 }
 
 type Config struct {
 	ReverseProxy ProxyConfig `json:"proxy"`
-	Backends []*Backend  `json: "backends"`
+	Backends []*Backend  `json:"backends"`
 } 
 
+// Main func
 func main() {
 	configuration := getConfig("config.json")
 	serverPool := initServerPool(configuration.Backends)
 	
+	//Reverse Proxy will pass the request to the loadbalancer
+	reverseProxy := newReverseProxy(configuration.ReverseProxy, serverPool)
 
-	//get backends list
-	backends := serverPool.Backends
-	
-	//Reverse Proxy will forward to one of the servers in the ServerPool it's choosen randomly
-	chosenIdx := rand.IntN(len(backends))
-    targetURL := backends[chosenIdx].URL
-	reverseProxy := newReverseProxy(configuration.ReverseProxy, targetURL)
-	
-	//Strating reverseProxy
+	//Starting reverseProxy
 	fmt.Println("Hello from reverseProxy, I'm starting now!")
-	fmt.Printf("I'm forwarding to %s\n", backends[chosenIdx].URLString)
+	fmt.Printf("I'm forwarding based on %s algorithm.\n", reverseProxy.Strategy)
 
-	http.Handle("/", reverseProxy.handler)
-	http.ListenAndServe(":" + strconv.Itoa(reverseProxy.Port), nil)
+	//whenever a request is sent call reverseProxy.ServeHTTP
+	http.Handle("/", reverseProxy)
+	http.ListenAndServe(":" + strconv.Itoa(reverseProxy.Port), reverseProxy)
 }
 
 // Functions used to get the configuration and initialize the Reverse Proxy and the server pool
@@ -99,12 +81,41 @@ func initServerPool(backends []*Backend) *ServerPool{
 	return serverPool
 }
 
-func newReverseProxy(proxyConfig ProxyConfig, targetURL *url.URL) *ReverseProxy{
+func newReverseProxy(proxyConfig ProxyConfig, serverPool *ServerPool) *ReverseProxy{
 	reverseProxy := &ReverseProxy{}
 	reverseProxy.Port = proxyConfig.Port
 	reverseProxy.Strategy = proxyConfig.Strategy
 	reverseProxy.HealthCheckFreq, _ = time.ParseDuration(proxyConfig.HealthCheckFreq)
-	reverseProxy.handler = httputil.NewSingleHostReverseProxy(targetURL)
+	reverseProxy.ServerPool = serverPool
 
 	return reverseProxy
+}
+
+func (reverseProxy *ReverseProxy)ServeHTTP(w http.ResponseWriter, r *http.Request){
+	var validBackend *Backend
+	switch reverseProxy.Strategy{
+	case "round-robin":
+		validBackend = reverseProxy.ServerPool.GetNextValidPeer_RoundRobin()
+	case"least-conn":
+		validBackend = reverseProxy.ServerPool.GetNextValidPeer_LeastConn()
+	default:
+		http.Error(w, "Strategy not yet implemented: choose round-robin or least-conn", 500)
+		return
+	}
+	if validBackend == nil{
+		http.Error(w, "Service Unavailable", 503)
+		return
+	}
+
+	goProxy := httputil.NewSingleHostReverseProxy(validBackend.URL)
+	fmt.Printf("I'm forwarding to %s\n", validBackend.URLString)
+	//increment number of connections of the server when request comes
+	validBackend.IncrementConn()
+
+	//decrement whenever request is handeled 
+	defer validBackend.IncrementConn()
+
+	//forward request to server
+	goProxy.ServeHTTP(w, r)
+
 }
