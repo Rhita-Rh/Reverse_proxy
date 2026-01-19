@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"sync/atomic"
 )
 
 type ServerPool struct{
@@ -15,11 +16,12 @@ func (serverPool *ServerPool) GetNextValidPeer_RoundRobin() *Backend{
 		return nil
 	}
 
-	for i :=0; i<len(backends); i++{
-		nextValidPeer_index := (int(serverPool.Current) + i) % len(backends)
+	n, startIdx := len(backends), atomic.AddUint64(&serverPool.Current, 1)
+
+	for i :=0; i<n; i++{
+		nextValidPeer_index := (int(startIdx) + i) % n
 		backend := backends[nextValidPeer_index]
 		if backend.Alive{
-			serverPool.Current = uint64(nextValidPeer_index +1)
 			return backend
 		}
 	}
@@ -33,10 +35,10 @@ func (serverPool *ServerPool) GetNextValidPeer_LeastConn() *Backend{
 	}
 	var min_conn_backend *Backend
 	for _, backend := range backends{
-		if !backend.Alive{
+		if !backend.IsAlive(){
 			continue
 		}
-		if min_conn_backend == nil || backend.CurrentConns < min_conn_backend.CurrentConns{
+		if min_conn_backend == nil || backend.GetCurentConn() < min_conn_backend.GetCurentConn(){
 			min_conn_backend = backend
 		}
 	}
@@ -53,7 +55,9 @@ func (serverPool *ServerPool) SetBackendStatus(uri *url.URL, alive bool){
 	backends := serverPool.Backends
 	for _, backend := range backends{
 		if backend.URLString == uri.String(){
+			backend.mux.Lock()
 			backend.Alive = alive
+			backend.mux.Unlock()
 			return 
 		}
 	}

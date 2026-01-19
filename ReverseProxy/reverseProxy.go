@@ -1,17 +1,19 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 )
-
 
 // to get the ReverseProxy configuration
 type ProxyConfig struct {
@@ -30,23 +32,6 @@ type Config struct {
 	ReverseProxy ProxyConfig `json:"proxy"`
 	Backends []*Backend  `json:"backends"`
 } 
-
-// Main func
-func main() {
-	configuration := getConfig("config.json")
-	serverPool := initServerPool(configuration.Backends)
-	
-	//Reverse Proxy will pass the request to the loadbalancer
-	reverseProxy := newReverseProxy(configuration.ReverseProxy, serverPool)
-
-	//Starting reverseProxy
-	fmt.Println("Hello from reverseProxy, I'm starting now!")
-	fmt.Printf("I'm forwarding based on %s algorithm.\n", reverseProxy.Strategy)
-
-	//whenever a request is sent call reverseProxy.ServeHTTP
-	http.Handle("/", reverseProxy)
-	http.ListenAndServe(":" + strconv.Itoa(reverseProxy.Port), reverseProxy)
-}
 
 // Functions used to get the configuration and initialize the Reverse Proxy and the server pool
 
@@ -91,7 +76,13 @@ func newReverseProxy(proxyConfig ProxyConfig, serverPool *ServerPool) *ReversePr
 	return reverseProxy
 }
 
+// ReverseProxy handler
 func (reverseProxy *ReverseProxy)ServeHTTP(w http.ResponseWriter, r *http.Request){
+	// request context is passed through to cancel slow backend processing
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	r = r.WithContext(ctx)
+
 	var validBackend *Backend
 	switch reverseProxy.Strategy{
 	case "round-robin":
@@ -113,9 +104,72 @@ func (reverseProxy *ReverseProxy)ServeHTTP(w http.ResponseWriter, r *http.Reques
 	validBackend.IncrementConn()
 
 	//decrement whenever request is handeled 
-	defer validBackend.IncrementConn()
+	defer validBackend.DecrementConn()
 
 	//forward request to server
 	goProxy.ServeHTTP(w, r)
+
+}
+
+// Health-checking function
+func HealthCheckFunc(reverseProxy *ReverseProxy, periodicity time.Duration){
+	serverPool := reverseProxy.ServerPool
+	for{
+		// Health for backends concurrently
+		var wg sync.WaitGroup
+		fmt.Println("Health Check Starts now!")
+		for _, backend := range serverPool.Backends{
+			wg.Add(1)
+			go func(){
+				defer wg.Done()
+				address := backend.URL.Host
+				alive := pingTCP(address)
+				serverPool.SetBackendStatus(backend.URL, alive)
+				if alive{
+					fmt.Printf("Backend %s is UP\n", backend.URLString)
+				}else{
+					fmt.Printf("Backend %s is DOWN\n", backend.URLString)
+				}
+			}()
+		}
+		wg.Wait()
+		time.Sleep(periodicity)
+	}	
+}
+
+// ping using TCP dial
+func pingTCP(address string) bool{
+	timeout := 2 * time.Second
+	conn, err := net.DialTimeout("tcp", address, timeout)
+
+	if err != nil{
+		return false
+	}
+
+	conn.Close()
+	return true
+	
+}
+
+//==============================================================================
+
+// Main func
+func main() {
+	configuration := getConfig("config.json")
+	serverPool := initServerPool(configuration.Backends)
+	
+	//Reverse Proxy will pass the request to the loadbalancer
+	reverseProxy := newReverseProxy(configuration.ReverseProxy, serverPool)
+
+	//Starting reverseProxy
+	fmt.Println("Hello from reverseProxy, I'm starting now!")
+	fmt.Printf("I'm forwarding based on %s algorithm.\n", reverseProxy.Strategy)
+
+	// Health checking 
+	go HealthCheckFunc(reverseProxy, reverseProxy.HealthCheckFreq)
+
+	//whenever a request is sent call reverseProxy.ServeHTTP
+	http.Handle("/", reverseProxy)
+	http.ListenAndServe(":" + strconv.Itoa(reverseProxy.Port), reverseProxy)
 
 }

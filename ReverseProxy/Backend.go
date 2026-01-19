@@ -3,6 +3,7 @@ package main
 import (
 	"net/url"
 	"sync"
+	"sync/atomic"
 )
 
 type Backend struct{
@@ -13,10 +14,21 @@ type Backend struct{
 	mux sync.RWMutex
 }
 
+// using atomic for concurrency 
 func (backend *Backend)IncrementConn(){
-	backend.CurrentConns ++
+	atomic.AddInt64(&backend.CurrentConns, 1)
 }
 
 func (backend *Backend)DecrementConn(){
-	backend.CurrentConns --
+	atomic.AddInt64(&backend.CurrentConns, -1)
+}
+
+func (backend *Backend) IsAlive() bool{
+	backend.mux.Lock()
+	defer backend.mux.Unlock()
+	return backend.Alive
+}
+
+func (backend *Backend) GetCurentConn()int64{
+	return atomic.LoadInt64(&backend.CurrentConns)
 }
