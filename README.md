@@ -10,3 +10,4 @@
 8/ admin API
 9/error handling
 10/context: timeouts && cancellations
+11/modify Client to get port of proxy from config

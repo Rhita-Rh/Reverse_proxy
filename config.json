@@ -1,20 +1,18 @@
 {
-  "backends": [
-    {
-        "url" : "http://localhost:8081"
-    },
-    {
-        "url" : "http://localhost:8082"
-    },
-    {
-        "url" : "http://localhost:8083"
-    }
-    
-  ],
-  
-  "proxy": {
-    "port": 8080,
-    "strategy": "round-robin",
-    "health_check_frequency": "30s"
+ "proxy": {
+  "port": 8080,
+  "strategy": "round-robin",
+  "health_check_frequency": "30s"
+ },
+ "backends": [
+  {
+   "url": "http://localhost:8081"
+  },
+  {
+   "url": "http://localhost:8082"
+  },
+  {
+   "url": "http://localhost:8083"
   }
+ ]
 }

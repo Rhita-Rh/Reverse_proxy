@@ -30,7 +30,7 @@ type ReverseProxy struct{
 
 type Config struct {
 	ReverseProxy ProxyConfig `json:"proxy"`
-	Backends []*Backend  `json:"backends"`
+	Backends []*BackendConfig  `json:"backends"`
 } 
 
 // Functions used to get the configuration and initialize the Reverse Proxy and the server pool
@@ -50,20 +50,22 @@ func getConfig(fileName string)Config{
 	return config
 }
 
-func initServerPool(backends []*Backend) *ServerPool{
-	serverPool := &ServerPool{
-		Backends: backends,
-	}
+func initServerPool(backends []*BackendConfig) *ServerPool{
+	var serverPool ServerPool
 	for _, backend := range backends {
+		backendPool := Backend{}
 		parsedURL, err := url.Parse(backend.URLString)
 		if err != nil{
 			log.Fatal(err)
 		}
-		backend.URL = parsedURL
-		backend.Alive = true
+		backendPool.URL = parsedURL
+		backendPool.URLString = backend.URLString
+		backendPool.Alive = true
+
+		serverPool.Backends = append(serverPool.Backends, &backendPool)
 	}
 
-	return serverPool
+	return &serverPool
 }
 
 func newReverseProxy(proxyConfig ProxyConfig, serverPool *ServerPool) *ReverseProxy{
@@ -160,6 +162,9 @@ func main() {
 	
 	//Reverse Proxy will pass the request to the loadbalancer
 	reverseProxy := newReverseProxy(configuration.ReverseProxy, serverPool)
+	
+	// Starting Admin API
+	go AdminApi(serverPool)
 
 	//Starting reverseProxy
 	fmt.Println("Hello from reverseProxy, I'm starting now!")
@@ -171,5 +176,5 @@ func main() {
 	//whenever a request is sent call reverseProxy.ServeHTTP
 	http.Handle("/", reverseProxy)
 	http.ListenAndServe(":" + strconv.Itoa(reverseProxy.Port), reverseProxy)
-
+	
 }

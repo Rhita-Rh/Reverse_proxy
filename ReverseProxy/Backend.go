@@ -14,6 +14,10 @@ type Backend struct{
 	mux sync.RWMutex
 }
 
+type BackendConfig struct{
+	URLString string `json:"url"`
+}
+
 // using atomic for concurrency 
 func (backend *Backend)IncrementConn(){
 	atomic.AddInt64(&backend.CurrentConns, 1)

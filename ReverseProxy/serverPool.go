@@ -2,26 +2,32 @@ package main
 
 import (
 	"net/url"
-	"sync/atomic"
+	"sync"
 )
 
 type ServerPool struct{
 	Backends[ ]*Backend `json:"backends"`
 	Current uint64 `json:"current"`
+	mux sync.Mutex
 }
 
 func (serverPool *ServerPool) GetNextValidPeer_RoundRobin() *Backend{
+	serverPool.mux.Lock()
+	defer serverPool.mux.Unlock()
+
+	n := len(serverPool.Backends)
 	backends := serverPool.Backends
-	if len(backends)==0{
+	if n == 0{
 		return nil
 	}
 
-	n, startIdx := len(backends), atomic.AddUint64(&serverPool.Current, 1)
+	startIdx := serverPool.Current
 
 	for i :=0; i<n; i++{
 		nextValidPeer_index := (int(startIdx) + i) % n
 		backend := backends[nextValidPeer_index]
-		if backend.Alive{
+		if backend.IsAlive(){
+			serverPool.Current = uint64(nextValidPeer_index+1) % uint64(n)
 			return backend
 		}
 	}

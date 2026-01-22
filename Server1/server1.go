@@ -9,7 +9,7 @@ import (
 
 func main() {
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        fmt.Fprintf(w, "Hello from backend server1", )
+        fmt.Fprintf(w, "Hello from backend server1\n")
     })
 
     fmt.Println("Server running on :8081")
