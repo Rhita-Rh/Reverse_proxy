@@ -10,7 +10,7 @@ import (
 
 func main() {
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        time.Sleep(3 * time.Second)
+        time.Sleep(10 * time.Second) //make it slower to test lean-conn
         fmt.Fprintf(w, "Hello from backend server2\n")
     })
 

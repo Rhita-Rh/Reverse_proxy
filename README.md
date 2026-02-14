@@ -107,10 +107,18 @@ go run ReverseProxy/reverseProxy.go ReverseProxy/backend.go ReverseProxy/serverP
 
 The proxy will start listening on `http://localhost:8080`
 
-3. **Test with the Client**:
+3. **Test with the Client**:(in separate terminals)
 
 ```bash
-go run Client/client.go
+go run Client1/client1.go
+```
+
+if you want to test the lean-conn method run these as well to test:
+
+```bash
+go run Client2/client2.go
+
+go run Client3/client3.go
 ```
 
 ## Usage
@@ -140,16 +148,21 @@ The proxy automatically monitors backend server health at the frequency specifie
 The admin API provides endpoints for monitoring and managing the proxy (if implemented in `adminApi.go`): (run these commands in cmd and not powershell)
 
 ● GET /status: Return a JSON list of all backends and their current health/load:
+```bash
 curl http://localhost:9000/status
+```
 
 
 ● POST /backends: Dynamically add a new backend URL to the pool:
+```bash
 curl -X POST http://localhost:9000/backends -H "Content-Type: application/json" -d "{\"url\": \"http://localhost:8084\"}"
+```
 
 
 ● DELETE /backends: Remove a backend from the pool, example:(server running on port :8083)
+```bash
 curl -X DELETE http://localhost:9000/backends -H "Content-Type: application/json" -d "{\"url\": \"http://localhost:8083\"}"
-
+```
 
 ## Architecture
 

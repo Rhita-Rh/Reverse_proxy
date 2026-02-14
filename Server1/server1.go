@@ -10,7 +10,7 @@ import (
 
 func main() {
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        time.Sleep(3 * time.Second)
+        time.Sleep(20 * time.Second) //making server1 slower
         fmt.Fprintf(w, "Hello from backend server1\n")
     })
 
