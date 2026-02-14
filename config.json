@@ -1,7 +1,7 @@
 {
  "proxy": {
   "port": 8080,
-  "strategy": "round-robin",
+  "strategy": "least-conn",
   "health_check_frequency": "30s"
  },
  "backends": [
